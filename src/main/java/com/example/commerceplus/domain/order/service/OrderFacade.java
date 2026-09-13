@@ -26,6 +26,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -63,6 +64,10 @@ public class OrderFacade {
         Member member = memberService.findMemberById(memberId);
         Cart cart = cartService.findCart(member.getId()).orElseThrow( () -> new BusinessException(ErrorCode.CART_NOT_FOUND));
         List<CartItem> cartItems = cartItemService.findAndValidateCartItems(cart, request.cartItemIds());
+        // 데드락 방지를 위해 ProductId로 정렬
+        List<CartItem> sortedCartItems = cartItems.stream()
+                .sorted(Comparator.comparing(cartItem -> cartItem.getProduct().getId()))
+                .toList();
         List<OrderItem> orderItems = new ArrayList<>();
 
         for (CartItem cartItem : cartItems) {
