@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # 1. MySQL 데이터베이스 컨테이너
+  database:
+    image: mysql:8.0
+    container_name: plus-commerce-db
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: commerceplus
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - backend-network
+
+  # 2. 스프링 부트 (리액트 내장) 컨테이너
+  backend:
+    build: .
+    container_name: plus-commerce-app
+    ports:
+      - "8080:8080"
+    environment:
+      # localhost 대신 mysql 컨테이너 이름인 database 사용
+      - SPRING_DATASOURCE_URL=jdbc:mysql://database:3306/commerceplus?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+      - SPRING_DATASOURCE_USERNAME=root
+      - SPRING_DATASOURCE_PASSWORD=1234
+    depends_on:
+      - database
+    networks:
+      - backend-network
+
+networks:
+  backend-network:
+    driver: bridge
+
+volumes:
+  db_data:
