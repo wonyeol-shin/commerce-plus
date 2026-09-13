@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
@@ -29,4 +31,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             Long orderId,
             Long memberId
     );
+
+    // 주문생성 후 30분이 지난 주문을 찾음
+    @Query("SELECT o FROM Order o WHERE o.createdAt < :thresholdTime AND o.status = PAYMENT_PENDING")
+    List<Order> findExpireOrders(@Param("thresholdTime") LocalDateTime thresholdTime);
 }
