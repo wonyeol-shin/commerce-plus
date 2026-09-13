@@ -21,7 +21,7 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 
-@Slf4j
+@Slf4j(topic = "JwtFilter")
 @RequiredArgsConstructor
 @Component
 public class JwtFilter extends OncePerRequestFilter {
