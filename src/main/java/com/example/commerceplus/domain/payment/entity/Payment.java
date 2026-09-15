@@ -43,12 +43,15 @@ public class Payment extends BaseTimeEntity {
     @Column(nullable = false, length = 20)
     private PaymentStatus status;
 
+    @Column(name = "portone_payment_id", unique = true, nullable = false, length = 100)
+    private String portonePaymentId;
+
     // 결제 완료 시각
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
     // 외부에서 임의로 Payment를 생성하지 못하도록 private 생성자 사용
-    private Payment(Order order) {
+    private Payment(Order order, String portonePaymentId) {
         this.order = order;
 
         // 결제 회원은 주문 회원과 동일하게 설정
@@ -59,11 +62,13 @@ public class Payment extends BaseTimeEntity {
 
         // 최초 결제 상태는 항상 결제 대기
         this.status = PaymentStatus.PAYMENT_PENDING;
+
+        this.portonePaymentId = portonePaymentId;
     }
 
     // 주문 생성 시 결제 대기 데이터를 생성
-    public static Payment create(Order order) {
-        return new Payment(order);
+    public static Payment create(Order order, String portonePaymentId) {
+        return new Payment(order, portonePaymentId);
     }
 
     public void validatePendingPayment() {

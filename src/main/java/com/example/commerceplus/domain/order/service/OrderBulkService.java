@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @RequiredArgsConstructor
 @Service
@@ -49,7 +50,9 @@ public class OrderBulkService {
                     "BULK-" + i
             );
 
-            Payment payment = Payment.create(order);
+            String orderNumber = "PAY_"  + UUID.randomUUID();
+
+            Payment payment = Payment.create(order,orderNumber);
 
             orders.add(order);
             payments.add(payment);

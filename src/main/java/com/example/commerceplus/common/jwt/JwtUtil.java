@@ -39,7 +39,12 @@ public class JwtUtil {
     }
 
     public String createToken
-            (Long memberId, String email, MemberRole role, MemberStatus status)
+            (Long memberId,
+             String email,
+             String name,
+             String phoneNumber,
+             MemberRole role,
+             MemberStatus status)
     {
         Date date = new Date();
 
@@ -47,6 +52,8 @@ public class JwtUtil {
                 Jwts.builder()
                         .subject(String.valueOf(memberId))
                         .claim("email", email)
+                        .claim("name", name)
+                        .claim("phoneNumber", phoneNumber)
                         .claim("role", role.name())
                         .claim("status", status.name())
                         .expiration(new Date(date.getTime() + tokenTime))
@@ -70,6 +77,10 @@ public class JwtUtil {
     public String extractUserEmail(String token) {
         return extractClaims(token).get("email").toString();
     }
+
+    public String extractUserName(String token) {return extractClaims(token).get("name").toString();}
+
+    public String extractUserPhone(String token) {return extractClaims(token).get("phoneNumber").toString();}
 
     public String extractRole(String token) {
         return extractClaims(token).get("role").toString();

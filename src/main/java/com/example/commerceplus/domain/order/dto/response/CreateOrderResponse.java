@@ -6,7 +6,7 @@ import com.example.commerceplus.domain.payment.entity.Payment;
 public record CreateOrderResponse(
         Long orderId,
         String orderNumber,
-        //String paymentId,
+        String portonePaymentId,
         Long paymentId,
         int totalPrice
 ) {
@@ -14,7 +14,7 @@ public record CreateOrderResponse(
         return new CreateOrderResponse(
                 order.getId(),
                 order.getOrderNumber(),
-                //payment.getPortonePaymentId(),
+                payment.getPortonePaymentId(),
                 payment.getId(),
                 order.getTotalPrice()
         );

@@ -100,7 +100,13 @@ public class MemberService {
             throw new BusinessException(ErrorCode.INACTIVE_ACCOUNT);
         }
 
-       String token = jwtUtil.createToken(member.getId(), member.getEmail(), member.getRole(), member.getStatus());
+       String token = jwtUtil.createToken(
+               member.getId(),
+               member.getEmail(),
+               member.getName(),
+               member.getPhoneNumber(),
+               member.getRole(),
+               member.getStatus());
 
        return new LoginMemberResponse(token);
     }

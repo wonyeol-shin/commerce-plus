@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +25,8 @@ public class PaymentService {
     //결제 생성
     @Transactional
     public Payment createPayment(Order order) {
-        Payment payment = Payment.create(order);
+        String orderNumber = "PAY-"  + UUID.randomUUID();
+        Payment payment = Payment.create(order, orderNumber);
         return paymentRepository.save(payment);
     }
 
