@@ -820,22 +820,38 @@ AWS 위에 VPC를 구성하고 Public/Private 서브넷을 분리하여,
 
 ### API 검증
 
+25개 API 엔드포인트를 대상으로 정상·예외·상태 전이 시나리오를 구성해
+Postman Runner로 검증했습니다.
+
+| 구분 | 링크 |
+| --- | --- |
+| Collection | [Commerce Plus](https://www.postman.com/jes2ngyun-5965557/workspace/commerce-plus/collection/55309519-3c49f569-35a9-42fb-8997-57bd9d898ca7?action=share&source=copy-link&creator=55309519) |
+| Environment | [Commerce Plus - Local (example)](https://www.postman.com/jes2ngyun-5965557/workspace/commerce-plus/environment/55309519-b87a1998-c14e-403f-af41-ac8a7ed32eed?action=share&source=copy-link&creator=55309519) |
+| JSON | [Collection](docs/postman/commerce-plus.postman_collection.json) · [Environment](docs/postman/commerce-plus-local.postman_environment.example.json) |
+
 | 영역 | 주요 검증 항목 | 결과 |
 | --- | --- | --- |
-| 인증·회원 | 회원가입, 로그인, 중복 이메일, 비활성 계정, 권한 접근 | ✅ 완료 |
-| 상품 | 목록·상세 조회, 조건 검색, 페이지네이션, 상품 수정, 캐시 무효화 | ✅ 완료 |
+| 인증·회원 | 회원가입, 로그인, 중복 이메일, 잘못된 로그인, 미인증 접근 | ✅ 완료 |
+| 상품 | 목록·상세 조회, 조건 검색, 페이지네이션, 잘못된 검색 조건 | ✅ 완료 |
 | 장바구니 | 상품 추가, 수량 누적·변경, 재고 초과, 개별·전체 삭제 | ✅ 완료 |
-| 주문 | 주문 생성, 재고 선차감, 전체 롤백, 조회, 소유권, 결제 전 취소 | ✅ 완료 |
-| 결제 | 모의 결제 성공·실패, 금액 검증, 중복 처리, PortOne 결제 확정 | ✅ 완료 |
-| 통합 흐름 | 결제 성공 시 CartItem 삭제, 실패·취소 시 재고 복구, 주문 스냅샷 유지 | ✅ 완료 |
+| 주문 | 주문 생성, 재고 선차감, 조회, 결제 전 취소, 취소 후 재고 복구 | ✅ 완료 |
+| 결제 | 모의 결제 성공·실패, 금액 불일치, 중복 승인·거절, 상태 전이 | ✅ 완료 |
+| 권한·연동 | 관리자 API 접근 제한, PortOne 결제 확정 실패 처리 | ✅ 완료 |
 
-### 검증 기준
+의도된 실패 요청은 예상한 `HTTP Status`와 `ErrorCode`가 반환되는지 확인하고,
+주문·결제 상태와 재고 변화를 함께 검증했습니다.
 
-- HTTP Status와 응답 데이터 확인
-- 잘못된 요청의 `ErrorCode` 확인
-- 주문·결제 상태 전이 확인
-- 주문·취소·결제 실패 전후 재고 비교
-- JWT 사용자 기준 리소스 소유권 확인
+**Runner 실행 결과: 115 Requests · 193 Tests · 193 Passed · 0 Failed · 0 Errors**
+
+![Postman Runner 결과](./docs/postman/runner-result.png)
+
+> Collection 전체 요청은 117개이며,
+> 대량 데이터 적재용 `99` 폴더의 2개 요청은 Runner 실행에서 제외했습니다.
+>
+> PortOne은 실제 결제 성공 E2E가 아니라,
+> 실결제가 없는 Payment ID로 결제 확정을 요청했을 때의 오류 처리,
+> Payment 실패 상태 전환 및 재고 복구를 검증했습니다.
+
 
 ---
 
