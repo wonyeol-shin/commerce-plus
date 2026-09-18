@@ -13,13 +13,12 @@ import java.util.Comparator;
 import java.util.List;
 
 @Service
-@Transactional(readOnly = true)
+@Transactional
 @RequiredArgsConstructor
-public class OrderCalculationProcessor {
+public class OrderLockProcessor {
 
     private final ProductService productService;
 
-    @Transactional
     public List<OrderItem> lockAndCreateOrderItems(List<CartItem> cartItems) {
         // 데드락 방지 정렬
         List<CartItem> sortedCartItems = cartItems.stream()
@@ -36,5 +35,17 @@ public class OrderCalculationProcessor {
             orderItems.add(orderItem);
         }
         return orderItems;
+    }
+
+    public void lockAndRestoreOrderItems(List<OrderItem> orderItems) {
+        // 데드락 방지 정렬
+        List<OrderItem> sortedOrderItems = orderItems.stream()
+                .sorted(Comparator.comparing(OrderItem::getProductId))
+                .toList();
+
+        for (OrderItem orderItem : sortedOrderItems) {
+            Product product = productService.findProductByIdWithLock(orderItem.getProductId());
+            product.restoreStock(orderItem.getQuantity());
+        }
     }
 }
