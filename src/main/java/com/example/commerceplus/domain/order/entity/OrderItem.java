@@ -55,4 +55,6 @@ public class OrderItem extends BaseTimeEntity {
     public int getSubtotal() {
         return priceSnapshot * quantity;
     }
+
+    public Long getProductId() {return product.getId();}
 }
