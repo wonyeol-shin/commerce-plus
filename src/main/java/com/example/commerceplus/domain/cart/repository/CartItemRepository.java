@@ -41,7 +41,7 @@ public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     @Query("DELETE FROM CartItem ci WHERE ci.cart.member.id = :memberId")
     int deleteAllByMemberId(@Param("memberId") Long memberId);
 
-    @Query("SELECT ci FROM CartItem ci WHERE ci.cart = :cart AND ci.id IN :ids")
+    @Query("SELECT DISTINCT ci FROM CartItem ci JOIN FETCH ci.product WHERE ci.cart = :cart AND ci.id IN :ids")
     List<CartItem> findByCartAndIds(@Param("cart") Cart cart, @Param("ids") List<Long> ids);
 
     @Modifying(flushAutomatically = true)
