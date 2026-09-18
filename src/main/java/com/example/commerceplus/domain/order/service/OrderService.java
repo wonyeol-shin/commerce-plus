@@ -33,17 +33,11 @@ public class OrderService {
 
     @Transactional
     public Order cancelOrder(Long orderId, Long memberId) {
-        Order order = orderRepository.findByIdWithOrderItems(orderId).orElseThrow(()
-                -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-
+        // 주문 취소 전 락을 걸고 검증 및 주문 취소
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
         order.validateOwner(memberId);
         order.cancel();
-
-        for (OrderItem orderItem : order.getOrderItems()) {
-            Product product = orderItem.getProduct();
-            product.restoreStock(orderItem.getQuantity());
-        }
-
         return order;
     }
 
