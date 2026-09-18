@@ -1,0 +1,4754 @@
+{
+  "info": {
+    "_postman_id": "e1c33611-8f18-4549-9954-a71fc13f8160",
+    "name": "Commerce Plus",
+    "description": "Commerce Plus API 시나리오 컬렉션 (main 기준)\n25개 API 엔드포인트를 대상으로 정상·예외·상태 전이 시나리오 117개 요청으로 구성했다.\n\n구성 원칙\n- 각 시나리오는 서로의 주문 상태에 영향을 주지 않도록 독립적으로 구성했다. 상태를 바꾸는 폴더(01~04, 08)는 장바구니를 비우고 새 주문(A~F)을 만든 뒤 진행한다.\n- 다만 정상 승인 시나리오(01 A, 04 D·E)는 실제 재고를 소비하므로, 전체 Runner 를 반복 실행할 경우 productId 상품에 충분한 재고가 필요하다 (1회당 6개 소비).\n- 의도된 실패 응답(400/401/403/404/409)은 기대 HTTP Status + ErrorCode 를 검증해 PASS 로 표시된다. FAIL 발생 시 명세·구현 불일치 또는 테스트 환경·데이터 조건을 확인한다.\n- 환경변수 자동 저장: accessToken(로그인), cartItemId_X(장바구니 조회), orderId_X · paymentId_X · portonePaymentId_X · totalPrice_X(주문 생성), stock_X(주문 전 재고)\n- 08 PortOne 은 실결제 성공 E2E 가 아니라, 실결제가 없는 Payment ID 로 확정 요청 시의 실패 처리(오류 응답 · Payment FAILED/CANCEL_FAILED · 재고 복구)를 검증한다.\n\n사용법\n1. Environment 'Commerce Plus - Local (example)' Import 후 선택. 비밀번호는 로컬 전용 테스트 계정 값이며 실제 계정·JWT·PortOne Secret 은 넣지 않는다.\n2. 전체 검증: 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 순서로 Run, 99 는 체크 해제\n3. 개별 시나리오 검증: 00 Setup 을 먼저 실행한 뒤 원하는 폴더 실행. 단, 07 조회·성능의 목록 건수 검증은 01~04 가 만든 주문·결제(5건 이상)를 전제로 한다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "00 Setup (회원가입 · 로그인 · 상품 확인)",
+      "item": [
+        {
+          "name": "회원가입",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "signup"
+              ]
+            },
+            "description": "MemberController.createMember() → 200. 반복 실행 시 이미 가입된 이메일이면 409 MEMBER_002 — 이것도 정상이므로 PASS",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"name\": \"테스트\",\n  \"password\": \"{{password}}\",\n  \"checkPassword\": \"{{password}}\",\n  \"phoneNumber\": \"010-1234-5678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('이미 가입된 이메일 → 409 MEMBER_002 (반복 실행 시 정상)', () => pm.expect(pm.response.json().code).to.eql('MEMBER_002'));",
+                  "} else {",
+                  "  pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "  pm.test('응답 필드', () => pm.expect(pm.response.json().data).to.have.keys('id','email','name','phoneNumber'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "회원가입 — 비밀번호 확인 불일치",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "signup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"mismatch@test.com\",\n  \"name\": \"테스트\",\n  \"password\": \"1234\",\n  \"checkPassword\": \"9999\",\n  \"phoneNumber\": \"010-1234-5678\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('비밀번호 확인 불일치 → 400 MEMBER_004', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('MEMBER_004');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "로그인 — 잘못된 비밀번호",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('잘못된 비밀번호 → 401 MEMBER_003', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().code).to.eql('MEMBER_003');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "로그인 → accessToken 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "응답 data.token 에는 'Bearer ' 접두사가 포함되어 있으므로 제거 후 accessToken 에 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('token 반환', () => pm.expect(json.data.token).to.be.a('string'));",
+                  "if (json.success && json.data && json.data.token) {",
+                  "  pm.environment.set('accessToken', json.data.token.replace(/^Bearer\\s+/, ''));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "토큰 없이 보호 API 호출",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "JwtAuthenticationEntryPoint → 401 AUTH_001",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('미인증 → 401 AUTH_001', () => {",
+                  "  pm.response.to.have.status(401);",
+                  "  pm.expect(pm.response.json().code).to.eql('AUTH_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 단건 조회 (테스트 상품 존재 확인)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "productId 상품이 존재하고 재고가 충분한지 확인 (시나리오마다 2개씩 주문)",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('테스트 상품 재고 ≥ 10', () => pm.expect(d.stock).to.be.at.least(10));",
+                  "pm.environment.set('productPrice', d.price);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "모든 시나리오의 전제. accessToken 은 여기서만 저장되고 컬렉션 전체가 Bearer 인증으로 사용"
+    },
+    {
+      "name": "01 정상 결제 흐름 (주문 A)",
+      "item": [
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_A 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_A', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_A 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_A', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_A}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_A}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 A 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_A · paymentId_A · portonePaymentId_A · totalPrice_A 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_A}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_A', json.data.orderId);",
+                  "  pm.environment.set('paymentId_A', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_A', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_A', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_A') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "모의 결제 승인 (SUCCESS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "PaymentExecutionService.completePayment() — Payment/Order 락 → COMPLETED",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_A}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_A}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == COMPLETED', () => pm.expect(pm.response.json().data.payStatus).to.eql('COMPLETED'));",
+                  "pm.test('data.orderStatus == COMPLETED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('COMPLETED'));",
+                  "pm.test('paidAt 기록', () => pm.expect(pm.response.json().data.paidAt).to.not.be.null);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 단건 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId_A}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId_A}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == COMPLETED', () => pm.expect(pm.response.json().data.payStatus).to.eql('COMPLETED'));",
+                  "pm.test('data.orderStatus == COMPLETED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 상세 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_A}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_A}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.status == COMPLETED', () => pm.expect(pm.response.json().data.status).to.eql('COMPLETED'));",
+                  "pm.test('data.paymentStatus == COMPLETED', () => pm.expect(pm.response.json().data.paymentStatus).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 — 주문 상품 자동 삭제 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "결제 완료 시 cartItemService.deleteOrderedProducts() 로 주문한 상품이 장바구니에서 제거됨"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('장바구니 비어 있음', () => pm.expect(pm.response.json().data.cartItems).to.have.lengthOf(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "재고 차감 유지 (복구 없음)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('재고 차감 유지 (복구 없음)', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_A') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 완료 주문 취소 시도 (정책: 결제 전 취소만 허용)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_A}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_A}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('COMPLETED 주문 취소 불가 → 400 ORDER_002', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('ORDER_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "새 주문 A 생성 → 승인 → 상태·장바구니·재고 검증 → 결제 후 취소 불가 확인"
+    },
+    {
+      "name": "02 결제 실패 흐름 (주문 B)",
+      "item": [
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_B 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_B', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_B 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_B', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_B}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_B}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 B 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_B · paymentId_B · portonePaymentId_B · totalPrice_B 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_B}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_B', json.data.orderId);",
+                  "  pm.environment.set('paymentId_B', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_B', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_B', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_B') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "모의 결제 거절 (FAILED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "failPayment() (REQUIRES_NEW) — Payment FAILED, Order CANCELED, 재고 복구",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_B}},\n  \"result\": \"FAILED\",\n  \"amount\": {{totalPrice_B}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == FAILED', () => pm.expect(pm.response.json().data.payStatus).to.eql('FAILED'));",
+                  "pm.test('data.orderStatus == CANCELED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('CANCELED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 단건 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId_B}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId_B}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == FAILED', () => pm.expect(pm.response.json().data.payStatus).to.eql('FAILED'));",
+                  "pm.test('data.orderStatus == CANCELED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('CANCELED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 상세 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_B}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_B}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.status == CANCELED', () => pm.expect(pm.response.json().data.status).to.eql('CANCELED'));",
+                  "pm.test('data.paymentStatus == FAILED', () => pm.expect(pm.response.json().data.paymentStatus).to.eql('FAILED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "재고 복구 확인 (주문 전 수량과 동일)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('재고 복구 확인 (주문 전 수량과 동일)', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_B')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "실패한 결제 재승인 시도",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "FAILED 는 종료 상태 — validatePendingPayment() → 409 PAYMENT_005",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_B}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_B}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('FAILED 결제 재승인 불가 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "실패로 취소된 주문 재취소 시도",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_B}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_B}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CANCELED 주문 재취소 불가 → 400 ORDER_002', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('ORDER_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "새 주문 B 생성 → 거절 → FAILED/CANCELED · 재고 복구 검증 → 종료 상태 재처리 불가 확인"
+    },
+    {
+      "name": "03 결제 전 취소 흐름 (주문 C)",
+      "item": [
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_C 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_C', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_C 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_C', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_C}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_C}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 C 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_C · paymentId_C · portonePaymentId_C · totalPrice_C 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_C}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_C', json.data.orderId);",
+                  "  pm.environment.set('paymentId_C', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_C', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_C', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_C') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 전 주문 취소",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_C}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_C}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.orderStatus == CANCELED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('CANCELED'));",
+                  "pm.test('data.payStatus == CANCELED', () => pm.expect(pm.response.json().data.payStatus).to.eql('CANCELED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 단건 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId_C}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId_C}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == CANCELED', () => pm.expect(pm.response.json().data.payStatus).to.eql('CANCELED'));",
+                  "pm.test('data.orderStatus == CANCELED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('CANCELED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 상세 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_C}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_C}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.status == CANCELED', () => pm.expect(pm.response.json().data.status).to.eql('CANCELED'));",
+                  "pm.test('data.paymentStatus == CANCELED', () => pm.expect(pm.response.json().data.paymentStatus).to.eql('CANCELED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "재고 복구 확인 (주문 전 수량과 동일)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('재고 복구 확인 (주문 전 수량과 동일)', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_C')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "취소된 주문 결제 승인 시도",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "Payment CANCELED 는 종료 상태 → 409 PAYMENT_005",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_C}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_C}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('취소된 결제 승인 불가 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "중복 취소 시도",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_C}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_C}}",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('CANCELED 주문 재취소 불가 → 400 ORDER_002', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('ORDER_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "새 주문 C 생성 → 취소 → CANCELED/CANCELED · 재고 복구 검증 → 취소 후 승인·재취소 불가 확인"
+    },
+    {
+      "name": "04 결제 예외 (금액 위조 · 중복 승인 · 존재하지 않는 주문)",
+      "item": [
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_D 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_D', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_D 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_D', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_D}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_D}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 D 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_D · paymentId_D · portonePaymentId_D · totalPrice_D 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_D}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_D', json.data.orderId);",
+                  "  pm.environment.set('paymentId_D', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_D', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_D', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_D') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "금액 위조 승인 시도 (amount: 1000)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "Payment.validateAmount() → 400 PAYMENT_002. 상태는 바뀌지 않아야 함",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_D}},\n  \"result\": \"SUCCESS\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('결제 금액 불일치 → 400 PAYMENT_002', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "금액 위조 실패 후 상태 불변 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId_D}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId_D}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.status == PAYMENT_PENDING', () => pm.expect(pm.response.json().data.status).to.eql('PAYMENT_PENDING'));",
+                  "pm.test('data.paymentStatus == PAYMENT_PENDING', () => pm.expect(pm.response.json().data.paymentStatus).to.eql('PAYMENT_PENDING'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "정상 금액으로 승인",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_D}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_D}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == COMPLETED', () => pm.expect(pm.response.json().data.payStatus).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "동일 주문 중복 승인 시도",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "이미 COMPLETED → validatePendingPayment() → 409 PAYMENT_005",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_D}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_D}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('중복 승인 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "중복 거절 시도 (COMPLETED → FAILED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "완료된 결제를 FAILED 로 바꿀 수 없음 → 409 PAYMENT_005",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_D}},\n  \"result\": \"FAILED\",\n  \"amount\": {{totalPrice_D}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('완료 결제 거절 불가 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "존재하지 않는 주문 승인 시도",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "findByOrderIdWithOrder() → 404 PAYMENT_001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": 999999999,\n  \"result\": \"SUCCESS\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('결제 정보 없음 → 404 PAYMENT_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "result 값 오류 (잘못된 enum)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "description": "MockPaymentResult 역직렬화 실패 → HttpMessageNotReadableException → 400 COMMON_001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_D}},\n  \"result\": \"PAID\",\n  \"amount\": {{totalPrice_D}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('입력값 오류 → 400 COMMON_001', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('COMMON_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_E 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_E', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_E 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_E', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_E}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_E}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 E 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_E · paymentId_E · portonePaymentId_E · totalPrice_E 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_E}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_E', json.data.orderId);",
+                  "  pm.environment.set('paymentId_E', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_E', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_E', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_E') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "승인 요청 1회차 (성공)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_E}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_E}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == COMPLETED', () => pm.expect(pm.response.json().data.payStatus).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "승인 요청 2회차 (중복)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_E}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_E}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('중복 승인 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "승인 요청 3회차 (중복)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mock/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mock",
+                "confirm"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_E}},\n  \"result\": \"SUCCESS\",\n  \"amount\": {{totalPrice_E}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('중복 승인 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 조회 — 중복 요청에도 COMPLETED 1회만 반영",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId_E}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId_E}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.payStatus == COMPLETED', () => pm.expect(pm.response.json().data.payStatus).to.eql('COMPLETED'));",
+                  "pm.test('data.orderStatus == COMPLETED', () => pm.expect(pm.response.json().data.orderStatus).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "주문 D: 금액 위조 → 상태 불변 → 정상 승인 → 중복 승인/거절 · 존재하지 않는 주문 · 잘못된 입력 / 주문 E: 같은 승인 3회 반복"
+    },
+    {
+      "name": "05 장바구니 CRUD",
+      "item": [
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "빈 장바구니 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "Cart 없으면 {id:null, cartItems:[]}, 있으면 cartItems:[]"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('cartItems 비어 있음', () => pm.expect(pm.response.json().data.cartItems).to.have.lengthOf(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기 (quantity 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('data.cartItemQuantity == 2', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "같은 상품 다시 담기 (quantity 3 → 합산 5)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartItemService.addItem() — 같은 Cart+Product 조합이면 수량 합산",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 5 (합산)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('항목 1건 · quantity 5', () => { pm.expect(d.cartItems).to.have.lengthOf(1); pm.expect(d.cartItems[0].quantity).to.eql(5); });",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_CRUD', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "수량 변경 (→ 1)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items/{{cartItemId_CRUD}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items",
+                "{{cartItemId_CRUD}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('data.cartItemQuantity == 1', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "수량 변경 — 0 (검증 실패)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items/{{cartItemId_CRUD}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items",
+                "{{cartItemId_CRUD}}"
+              ]
+            },
+            "description": "@Min(1) → MethodArgumentNotValidException → 400 COMMON_001",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('수량 0 → 400 COMMON_001', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('COMMON_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기 — quantity 0 (검증 실패)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('수량 0 → 400 COMMON_001', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('COMMON_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기 — 재고 초과",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "product.isEnoughStock() 실패 → 409 PRODUCT_002",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 99999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('재고 부족 → 409 PRODUCT_002', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PRODUCT_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기 — 존재하지 않는 상품",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "999999999"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('상품 없음 → 404 PRODUCT_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('PRODUCT_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "존재하지 않는 항목 수량 변경",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items",
+                "999999999"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('장바구니 항목 없음 → 404 CART_002', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('CART_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기 — 존재하지 않는 항목",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds=999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "999999999"
+                }
+              ]
+            },
+            "description": "findAndValidateCartItems() — 조회 결과 없음 → 400 CART_001"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('장바구니 비어 있음 → 400 CART_001', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('CART_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 개별 삭제",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items/{{cartItemId_CRUD}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items",
+                "{{cartItemId_CRUD}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "이미 삭제된 항목 재삭제",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items/{{cartItemId_CRUD}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items",
+                "{{cartItemId_CRUD}}"
+              ]
+            },
+            "description": "deleteByIdAndMemberId() 삭제 건수 0 → 404 CART_002"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('장바구니 항목 없음 → 404 CART_002', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('CART_002');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "삭제 후 장바구니 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('cartItems 비어 있음', () => pm.expect(pm.response.json().data.cartItems).to.have.lengthOf(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "전체 비우기",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "담기 → 합산 → 수량 변경 → 검증 실패 케이스 → 삭제 → 재삭제 404. 주문을 만들지 않으므로 다른 시나리오에 영향 없음"
+    },
+    {
+      "name": "06 관리자 (권한 검증)",
+      "item": [
+        {
+          "name": "관리자 회원가입",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admins/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admins",
+                "signup"
+              ]
+            },
+            "description": "관리자는 INACTIVE 로 생성. 반복 실행 시 409 MEMBER_002 도 정상",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"name\": \"관리자\",\n  \"password\": \"{{adminPassword}}\",\n  \"checkPassword\": \"{{adminPassword}}\",\n  \"phoneNumber\": \"010-0000-0001\",\n  \"role\": \"ADMIN\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 409) {",
+                  "  pm.test('이미 가입된 이메일 → 409 MEMBER_002 (반복 실행 시 정상)', () => pm.expect(pm.response.json().code).to.eql('MEMBER_002'));",
+                  "} else {",
+                  "  pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "관리자 회원가입 — role NORMAL",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/admins/signup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "admins",
+                "signup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"normal-as-admin@test.com\",\n  \"name\": \"관리자\",\n  \"password\": \"1234\",\n  \"checkPassword\": \"1234\",\n  \"phoneNumber\": \"010-0000-0002\",\n  \"role\": \"NORMAL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('어드민 가입에 NORMAL 불가 → 400 MEMBER_005', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('MEMBER_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "관리자 로그인 시도 (INACTIVE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "활성화 전 관리자는 로그인 불가 → 403 MEMBER_006. (DB 에서 status 를 ACTIVE 로 바꾸면 200 — 그 경우도 PASS 처리하고 adminToken 저장)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  pm.test('활성화된 관리자 로그인 200', () => pm.response.to.have.status(200));",
+                  "  pm.environment.set('adminToken', pm.response.json().data.token.replace(/^Bearer\\s+/, ''));",
+                  "} else {",
+                  "  pm.test('INACTIVE 관리자 → 403 MEMBER_006', () => { pm.response.to.have.status(403); pm.expect(pm.response.json().code).to.eql('MEMBER_006'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "일반 회원 → 관리자 목록 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/admins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admins"
+              ]
+            },
+            "description": "@PreAuthorize(ACTIVE and ADMIN) → AuthorizationDeniedException → 403 AUTH_003"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('일반 회원 접근 차단 → 403 AUTH_003', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "  pm.expect(pm.response.json().code).to.eql('AUTH_003');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "일반 회원 → 상품 수정",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/product/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": "SecurityConfig URL 권한 (ADMIN/OP_ADMIN) → 403. 필터 단계 차단이라 응답 본문은 ApiResponse 가 아닐 수 있어 상태만 검증",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"여름 티셔츠\",\n  \"price\": 21000,\n  \"comment\": \"통기성 좋은 티셔츠\",\n  \"category\": \"FASHION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden (일반 회원 상품 수정 차단)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "일반 회원 → 상품 더미 적재",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "bulk"
+              ]
+            },
+            "description": "SecurityConfig URL 권한 (ADMIN) → 403. 일반 회원이므로 실제 적재는 일어나지 않음"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403 Forbidden (일반 회원 bulk 차단)', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "관리자 계정 생성 규칙과 일반 회원의 관리자 API 접근 차단을 검증. 활성 관리자 토큰으로 실제 수정을 하려면 adminToken 을 수동 활용"
+    },
+    {
+      "name": "07 조회 · 성능",
+      "item": [
+        {
+          "name": "상품 목록 v1 (DB 직접 조회)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products?page=0&size=9&category=FASHION&minPrice=10000&maxPrice=50000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                },
+                {
+                  "key": "category",
+                  "value": "FASHION"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "50000"
+                }
+              ]
+            },
+            "description": "복합 인덱스 (category, created_at) 적용 쿼리. 응답 시간은 Runner 콘솔에 기록",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('v1 200', () => pm.response.to.have.status(200));",
+                  "console.log('v1 200 responseTime(ms) =', pm.response.responseTime);",
+                  "pm.test('페이지 응답 구조', () => pm.expect(pm.response.json().data).to.include.keys('content','page','size'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 목록 v2 캐시 — 1회차 (캐시 적재)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/cache?page=0&size=9&category=FASHION&minPrice=10000&maxPrice=50000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "cache"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                },
+                {
+                  "key": "category",
+                  "value": "FASHION"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "50000"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('v2 1회차 200', () => pm.response.to.have.status(200));",
+                  "console.log('v2 1회차 200 responseTime(ms) =', pm.response.responseTime);",
+                  "pm.test('페이지 응답 구조', () => pm.expect(pm.response.json().data).to.include.keys('content','page','size'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 목록 v2 캐시 — 2회차 (캐시 적중)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/cache?page=0&size=9&category=FASHION&minPrice=10000&maxPrice=50000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "cache"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                },
+                {
+                  "key": "category",
+                  "value": "FASHION"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "50000"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('v2 2회차 200', () => pm.response.to.have.status(200));",
+                  "console.log('v2 2회차 200 responseTime(ms) =', pm.response.responseTime);",
+                  "pm.test('페이지 응답 구조', () => pm.expect(pm.response.json().data).to.include.keys('content','page','size'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 목록 v2 캐시 — 3회차 (캐시 적중)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/cache?page=0&size=9&category=FASHION&minPrice=10000&maxPrice=50000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "cache"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                },
+                {
+                  "key": "category",
+                  "value": "FASHION"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "10000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "50000"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('v2 3회차 200', () => pm.response.to.have.status(200));",
+                  "console.log('v2 3회차 200 responseTime(ms) =', pm.response.responseTime);",
+                  "pm.test('페이지 응답 구조', () => pm.expect(pm.response.json().data).to.include.keys('content','page','size'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 목록 — 가격 범위 오류 (min > max)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products?page=0&size=9&minPrice=50000&maxPrice=10000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                },
+                {
+                  "key": "minPrice",
+                  "value": "50000"
+                },
+                {
+                  "key": "maxPrice",
+                  "value": "10000"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('최소가격 > 최대가격 → 400 PRODUCT_005', () => {",
+                  "  pm.response.to.have.status(400);",
+                  "  pm.expect(pm.response.json().code).to.eql('PRODUCT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 단건 조회 — 존재하지 않는 상품",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "999999999"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('상품 없음 → 404 PRODUCT_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('PRODUCT_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "내 주문 목록",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?page=0&size=9",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                }
+              ]
+            },
+            "description": "01~04 에서 만든 주문 A~E 가 포함되어야 함. 이 폴더는 01~04 실행을 전제로 하므로 단독 실행 시 이 검증은 FAIL 할 수 있음"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 5건 이상', () => pm.expect(pm.response.json().data.content.length).to.be.at.least(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "내 결제 목록",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments?page=0&size=9",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "9"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('결제 5건 이상', () => pm.expect(pm.response.json().data.content.length).to.be.at.least(5));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 상세 — 존재하지 않는 주문",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "999999999"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('주문 없음 → 404 ORDER_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('ORDER_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 단건 — 존재하지 않는 결제",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "999999999"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('결제 없음 → 404 PAYMENT_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 취소 — 존재하지 않는 주문",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/999999999/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "999999999",
+                "cancel"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('주문 없음 → 404 ORDER_001', () => {",
+                  "  pm.response.to.have.status(404);",
+                  "  pm.expect(pm.response.json().code).to.eql('ORDER_001');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "목록/단건 조회와 캐시 응답 시간 비교, 존재하지 않는 리소스 404. 상태를 바꾸는 요청 없음"
+    },
+    {
+      "name": "08 PortOne 연동 [도전]",
+      "item": [
+        {
+          "name": "PortOne 설정 조회",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portone/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "portone",
+                "config"
+              ]
+            },
+            "description": "프론트 SDK 초기화용 storeId · channelKey. Parameter Store 값이 없으면 null 일 수 있어 키 존재만 검증",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('storeId · channelKey 키 존재', () => pm.expect(pm.response.json().data).to.have.keys('storeId','channelKey'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 전체 비우기 (초기화)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "items"
+              ]
+            },
+            "description": "시나리오 독립성을 위해 시작 전에 장바구니를 비운다. 비어 있어도 204"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('204 No Content', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 재고 확인 (주문 전)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "description": "현재 재고를 stock_F 에 저장. 이후 재고 차감/복구 검증에 사용",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('stock_F', pm.response.json().data.stock);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "상품 담기",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts",
+                "{{productId}}"
+              ]
+            },
+            "description": "CartController.addItem() → 201 Created, data.cartItemQuantity 반환",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('cartItemQuantity == 2 (비운 뒤 새로 담았으므로 합산 없음)', () => pm.expect(pm.response.json().data.cartItemQuantity).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "장바구니 조회 → cartItemId 저장",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "carts"
+              ]
+            },
+            "description": "cartItems[0].cartItemId 를 cartItemId_F 에 저장"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const d = pm.response.json().data;",
+                  "pm.test('장바구니에 항목 1건', () => pm.expect(d.cartItems).to.have.lengthOf(1));",
+                  "if (d.cartItems.length > 0) pm.environment.set('cartItemId_F', d.cartItems[0].cartItemId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문서 미리보기",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/checkout?cartItemIds={{cartItemId_F}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "checkout"
+              ],
+              "query": [
+                {
+                  "key": "cartItemIds",
+                  "value": "{{cartItemId_F}}"
+                }
+              ]
+            },
+            "description": "totalPrice 를 결제 금액 검증에 사용"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('items 1건 · totalPrice > 0', () => { const d = pm.response.json().data; pm.expect(d.items).to.have.lengthOf(1); pm.expect(d.totalPrice).to.be.above(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 → 주문 F 저장",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "재고 선차감 + Order/Payment(PAYMENT_PENDING) 생성. orderId_F · paymentId_F · portonePaymentId_F · totalPrice_F 저장",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cartItemIds\": [\n    {{cartItemId_F}}\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('orderId · paymentId · totalPrice 반환', () => pm.expect(json.data).to.include.keys('orderId','paymentId','portonePaymentId','totalPrice'));",
+                  "if (json.success) {",
+                  "  pm.environment.set('orderId_F', json.data.orderId);",
+                  "  pm.environment.set('paymentId_F', json.data.paymentId);",
+                  "  pm.environment.set('portonePaymentId_F', json.data.portonePaymentId);",
+                  "  pm.environment.set('totalPrice_F', json.data.totalPrice);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 생성 후 재고 2 차감 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('주문 생성 후 재고 2 차감 확인', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_F') - 2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PortOne 결제 확정 (실결제 없는 portonePaymentId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "confirm"
+              ]
+            },
+            "description": "실제 결제창을 거치지 않았으므로 PortOne 조회 실패 → catch 블록에서 failPayment() 후 원래 예외 재throw. 오류 응답 자체가 기대 동작이므로 PASS",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_F}},\n  \"portonePaymentId\": \"{{portonePaymentId_F}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('실결제 없음 → 오류 응답 (2xx 아님)', () => pm.expect(pm.response.code).to.be.oneOf([400, 401, 404, 409, 500]));",
+                  "const json = pm.response.json();",
+                  "pm.test('ApiResponse 오류 형식 (success:false, code 존재)', () => { pm.expect(json.success).to.eql(false); pm.expect(json.code).to.be.a('string'); });",
+                  "console.log('PortOne confirm 응답 code =', json.code, '/', json.message);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "결제 조회 — 확정 실패 후 FAILED 처리 확인",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/{{paymentId_F}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "{{paymentId_F}}"
+              ]
+            },
+            "description": "failPayment() 는 REQUIRES_NEW 라 예외 재throw 후에도 FAILED 가 남아야 함. 자동 환불 실패 시 CANCEL_FAILED"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('payStatus FAILED (또는 CANCEL_FAILED)', () => pm.expect(pm.response.json().data.payStatus).to.be.oneOf(['FAILED','CANCEL_FAILED']));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "재고 복구 확인 (주문 전 수량과 동일)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/products/{{productId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "products",
+                "{{productId}}"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('재고 복구 확인 (주문 전 수량과 동일)', () => pm.expect(pm.response.json().data.stock).to.eql(pm.environment.get('stock_F')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PortOne 확정 — portonePaymentId 불일치",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/confirm",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "confirm"
+              ]
+            },
+            "description": "이미 FAILED 이므로 validatePendingPayment() 가 먼저 걸림 → 409 PAYMENT_005",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": {{orderId_F}},\n  \"portonePaymentId\": \"not-my-payment-id\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('종료된 결제 재확정 불가 → 409 PAYMENT_005', () => {",
+                  "  pm.response.to.have.status(409);",
+                  "  pm.expect(pm.response.json().code).to.eql('PAYMENT_005');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "PortOne 미연동 로컬 환경에서도 Runner 가 PASS 하도록, 실결제 없는 확정 요청의 실패 처리(FAILED · 재고 복구)를 검증"
+    },
+    {
+      "name": "99 대량 데이터 적재 (Runner 에서 체크 해제)",
+      "item": [
+        {
+          "name": "상품 더미 50,000건 적재 (ADMIN 토큰 필요)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/products/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "products",
+                "bulk"
+              ]
+            },
+            "description": "활성 ADMIN 토큰으로만 성공. Runner 전체 실행 시 이 폴더는 체크 해제 — 실행 시간이 길고 매번 5만 건이 추가됨"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 (ADMIN) 또는 403 (일반 회원)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "주문 더미 50,000건 적재",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/bulk",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "bulk"
+              ]
+            },
+            "description": "인증만 되면 실행됨 — 실수로 Runner 에 포함하지 말 것"
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "성능 측정용 데이터 적재. 시나리오 Runner 에는 포함하지 않는다"
+    }
+  ],
+  "variable": []
+}
