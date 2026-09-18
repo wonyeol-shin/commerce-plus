@@ -110,7 +110,7 @@ public class Payment extends BaseTimeEntity {
         this.status = PaymentStatus.FAILED;
     }
 
-    // 결제 완료 후 취소: COMPLETED → CANCELED
+    // 결제 취소: PAYMENT_PENDING → CANCELED / COMPLETED -> CANCELED
     public void cancel() {
         if (!this.status.canTransitTo(PaymentStatus.CANCELED)) {
             throw new BusinessException(ErrorCode.INVALID_PAYMENT_STATUS);

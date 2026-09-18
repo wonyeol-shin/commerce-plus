@@ -35,4 +35,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.id = :paymentId ")
     Optional<Payment> findByIdWithLock(@Param("paymentId") Long paymentId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Payment p WHERE p.id = :orderId ")
+    Optional<Payment> findByOrderIdWithLock(@Param("orderId") Long orderId);
 }

@@ -14,7 +14,6 @@ import com.example.commerceplus.domain.order.entity.Order;
 import com.example.commerceplus.domain.order.entity.OrderItem;
 import com.example.commerceplus.domain.payment.entity.Payment;
 import com.example.commerceplus.domain.payment.service.PaymentService;
-import com.example.commerceplus.domain.product.entity.Product;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,9 +31,10 @@ public class OrderFacade {
     private final CartService cartService;
     private final MemberService memberService;
     private final OrderService orderService;
+    private final OrderItemService orderItemService;
     private final PaymentService paymentService;
     private final CartItemService cartItemService;
-    private final OrderCalculationProcessor orderCalculationProcessor;
+    private final OrderLockProcessor orderLockProcessor;
 
     @Transactional(readOnly = true)
     public GetCheckoutResponse getCheckoutOne(Long memberId, List<Long> cartItemIds) {
@@ -61,7 +61,7 @@ public class OrderFacade {
 
         // 장바구니 상품이 유효한지 확인하고 장바구니 생성 및 상품 재고차감
         List<CartItem> cartItems = cartItemService.findAndValidateCartItems(cart, request.cartItemIds());
-        List<OrderItem> orderItems = orderCalculationProcessor.lockAndCreateOrderItems(cartItems);
+        List<OrderItem> orderItems = orderLockProcessor.lockAndCreateOrderItems(cartItems);
 
         // 장바구니에 담긴 총 상품 계산 후 주문 생성
         int totalPrice = orderItems.stream().mapToInt(OrderItem::getSubtotal).sum();
@@ -95,17 +95,12 @@ public class OrderFacade {
         return GetOrderResponse.from(order, payment.getId(), payment.getStatus().name());
     }
 
-    // 주문 취소
+    // 결제 전 주문 취소
     public CancelOrderResponse cancelOrder(Long memberId, Long orderId) {
-        // 주문취소와 재고 복구
         Order order = orderService.cancelOrder(orderId, memberId);
-
-        Payment payment = paymentService.findPaymentByOrderId(orderId)
-                .orElseThrow(() ->
-                        new BusinessException(ErrorCode.PAYMENT_NOT_FOUND)
-                );
-        payment.cancel();
-
+        List<OrderItem> orderItems = orderItemService.findByOrderId(orderId);
+        orderLockProcessor.lockAndRestoreOrderItems(orderItems);
+        Payment payment =  paymentService.cancelPayment(order.getId());
         return new CancelOrderResponse(
                 order,
                 payment.getStatus()
