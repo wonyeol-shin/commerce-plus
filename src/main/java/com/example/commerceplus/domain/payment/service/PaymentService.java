@@ -22,7 +22,7 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
   
-    //결제 생성
+    // 결제 생성
     @Transactional
     public Payment createPayment(Order order) {
         String orderNumber = "PAY-"  + UUID.randomUUID();
@@ -53,4 +53,12 @@ public class PaymentService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
     }
 
+    // 결제 취소
+    @Transactional
+    public Payment cancelPayment(Long orderId) {
+        Payment payment = paymentRepository.findByOrderIdWithLock(orderId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.PAYMENT_NOT_FOUND));
+        payment.cancel();
+        return payment;
+    }
 }
