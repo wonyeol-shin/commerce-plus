@@ -31,9 +31,9 @@ public class PaymentExecutionService {
 
     @Transactional
     public PaymentResponse completePayment(Long memberId, Long paymentId, Long orderId) {
-        // 일반 Facade가 아니라 여기서 락을 걸음
-        Payment payment = paymentService.findPaymentByIdWithLock(paymentId);
+        // 일반 Facade가 아니라 여기서 락을 걸음, 주문 자동취소와 데드락이 걸리지 않게 order -> payment 순서로 잠금
         Order order = orderService.findOderIdWithLock(orderId);
+        Payment payment = paymentService.findPaymentByIdWithLock(paymentId);
 
         if (!payment.getOrder().getId().equals(order.getId())) {
             throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
@@ -57,8 +57,9 @@ public class PaymentExecutionService {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentResponse failPayment(Long memberId, Long paymentId, Long orderId) {
-        Payment payment = paymentService.findPaymentByIdWithLock(paymentId);
+        // 주문 자동취소와 데드락이 걸리지 않게 order -> payment 순서로 잠금
         Order order = orderService.findOderIdWithLock(orderId);
+        Payment payment = paymentService.findPaymentByIdWithLock(paymentId);
 
         if (!payment.getOrder().getId().equals(order.getId())) {
             throw new BusinessException(ErrorCode.PAYMENT_NOT_FOUND);
